@@ -9,6 +9,8 @@ sys.path.append("../../base")
 from parse_excel import CParseExcel
 import numpy as np
 import pandas as pd
+import xlrd
+import xlsxwriter
 
 
 class CReadInfo(object):
@@ -104,6 +106,40 @@ class CFindRegionFieldByTitle(CReadInfo):
 			data_df.columns = columns
 			data_df.to_excel(writer, sheet_name, index = False)
 		writer.save()
+		# add headers
+		getter = CGetHeaderInfos(self.m_file_path, self.get_region_infos())
+		getter.read()
+		headers = getter.get_header_infos()
+		print(headers)
+		wb = xlrd.open_workbook(obj_path)
+		wbt = xlsxwriter.Workbook("./obj/out.xlsx")
+		print("------------", len(headers))
+		for sheet_index, v in headers.items():
+			sheet_name = v.get("sheet_name")
+			data = v.get("data")
+			write_sheet = wbt.add_worksheet(sheet_name)
+			row_i = 0
+			for row in data:
+				for col in row:
+					col_i = col.get(CParseExcel.COL_INDEX)
+					col_v = col.get(CParseExcel.VALUE)
+					write_sheet.write(row_i, col_i, col_v)
+				row_i += 1
+		# for sheet_index, del_indexs in del_infos.items():
+		# 	sheet = wb.sheet_by_index(sheet_index)
+		# 	sheet_names = wb.sheet_names()
+		# 	sheet_name = sheet_names[sheet_index]
+		# 	row_len = sheet.nrows
+		# 	col_len = sheet.ncols
+		# 	write_sheet = wbt.add_worksheet(sheet_name)
+		# 	for row in range(row_len):
+		# 		if row in del_indexs:
+		# 			pass
+		# 		else:
+		# 			for col in range(col_len):
+		# 				value = sheet.cell(row, col).value
+		# 				write_sheet.write(row, col, value)
+		wbt.close()
 
 
 class CGetHeaderInfos(CReadInfo):
