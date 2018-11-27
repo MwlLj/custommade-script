@@ -103,12 +103,14 @@ class CFindRegionFieldByTitle(CReadInfo):
 		reader.read(callback)
 		return info
 
-	def __write(self, write_sheet, datas, row_offset=0):
+	def __write(self, write_sheet, datas, row_offset=0, row_height=25):
 		for row, col_values in datas.items():
 			for col_value in col_values:
 				col = col_value.get(CParseExcel.COL_INDEX)
 				value = col_value.get(CParseExcel.VALUE)
 				write_sheet.write(row + row_offset, col, value)
+				write_sheet.set_row(row + row_offset, row_height)
+				write_sheet.set_tab_color("green")
 
 	def gen(self, obj_path):
 		writer = pd.ExcelWriter(obj_path)
