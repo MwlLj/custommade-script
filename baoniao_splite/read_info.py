@@ -18,7 +18,7 @@ class CReadInfo(object):
 		self.m_parse_excel = CParseExcel(file_path)
 		self.m_row_datas = []
 
-	def read(self):
+	def read(self, sheet_callback=None):
 		self.m_parse_excel.parse()
 		info_dict = self.m_parse_excel.get_info_dict()
 		for key, sheet_infos in info_dict.items():
@@ -41,6 +41,10 @@ class CReadInfo(object):
 						col_index += 1
 					row_index += 1
 					self.col_values(sheet_index, sheet_name, row_index, col_values)
+					if sheet_callback is not None:
+						b = sheet_callback(sheet_index, sheet_name, row_index, col_values)
+						if b is False:
+							return
 					self.m_row_datas.append(row_data)
 				sheet_index += 1
 
@@ -63,145 +67,74 @@ class CFindRegionFieldByTitle(CReadInfo):
 		self.m_region_infos = []
 		self.m_file_path = file_path
 
-	# def col_value(self, sheet_index, row_index, col_index, value):
-		# if value == "办事处" or value == "所属区域":
-			# region_info = (sheet_index, row_index, col_index)
-			# self.m_region_infos.append(region_info)
-
-	def col_values(self, sheet_index, sheet_name, row_index, col_indexs):
-		index = 0
-		for col_index in col_indexs:
-			value = col_index.get(CParseExcel.VALUE)
-			if value == "办事处" or value == "所属区域":
-				region_info = (sheet_index, sheet_name, row_index, index, col_indexs)
-				self.m_region_infos.append(region_info)
-			index += 1
-
 	def get_region_infos(self):
+		def callback(sheet_index, sheet_name, row_index, col_indexs):
+			index = 0
+			for col_index in col_indexs:
+				value = col_index.get(CParseExcel.VALUE)
+				if value == "办事处" or value == "所属区域":
+					region_info = (sheet_index, sheet_name, row_index, index, col_indexs)
+					self.m_region_infos.append(region_info)
+				index += 1
+			return True
+		self.read(callback)
 		return self.m_region_infos
+
+	def get_headers(self, sheetname, flag_row_index):
+		info = {}
+		def callback(sheet_index, sheet_name, row_index, col_indexs):
+			if sheet_name != sheetname:
+				return True
+			if row_index > flag_row_index:
+				return False
+			info[row_index - 1] = col_indexs
+			return True
+		self.read(callback)
+		return info
+
+	def get_data_after_filter(self, sheetname, path):
+		reader = CReadInfo(path)
+		info = {}
+		def callback(sheet_index, sheet_name, row_index, col_indexs):
+			if sheet_name != sheetname:
+				return True
+			info[row_index] = col_indexs
+			return True
+		reader.read(callback)
+		return info
+
+	def __write(self, write_sheet, datas, row_offset=0):
+		for row, col_values in datas.items():
+			for col_value in col_values:
+				col = col_value.get(CParseExcel.COL_INDEX)
+				value = col_value.get(CParseExcel.VALUE)
+				write_sheet.write(row + row_offset, col, value)
 
 	def gen(self, obj_path):
 		writer = pd.ExcelWriter(obj_path)
-		"""
-		getter = CGetHeaderInfos(self.m_file_path, reader.get_region_infos())
-		getter.read()
-		headers = getter.get_header_infos()
-		for sheet_index, v in headers.items():
-			sheet_name = v.get("sheet_name")
-			data = v.get("data")
-			for row in data:
-				excel_ori = pd.read_excel(io="./file/test1.xlsx", sheet_name=sheet_name)
-				data_df = pd.DataFrame(data=excel_ori.values)
-				print([index.get(CParseExcel.VALUE) for index in row])
-				data_df.columns = [index.get(CParseExcel.VALUE) for index in row]
-				data_df.to_excel(writer, sheet_name, index = False)
-		"""
-		for sheet_index, sheet_name, row_index, col_index, col_indexs in self.get_region_infos():
+		region_infos = self.get_region_infos()
+		for sheet_index, sheet_name, row_index, col_index, col_indexs in region_infos:
 			excel_ori = pd.read_excel(io=self.m_file_path, sheet_name=sheet_name)
 			a = excel_ori.values
 			select = a[:, col_index]
 			a = a[np.where((select == "青岛办事处") | (select == "上海客户一部") | (select == "上海客户二部") | (select == "上海客户三部") | (select == "南京客户一部") | (select == "南京客户二部") | (select == "南京客户三部") | (select == "山东客户一部") | (select == "山东客户二部") | (select == "商务定制部") | (select == "苏州客户部") | (select == "苏北客户部") | (select == "青岛办事处"))]
 			data_df = pd.DataFrame(data=a, copy=True)
-			columns = [index.get(CParseExcel.VALUE) for index in col_indexs]
-			data_df.columns = columns
-			data_df.to_excel(writer, sheet_name, index = False)
+			# columns = [index.get(CParseExcel.VALUE) for index in col_indexs]
+			# data_df.columns = columns
+			data_df.to_excel(writer, sheet_name, index=False, columns=None, header=None)
 		writer.save()
 		# add headers
-		getter = CGetHeaderInfos(self.m_file_path, self.get_region_infos())
-		getter.read()
-		headers = getter.get_header_infos()
-		print(headers)
-		wb = xlrd.open_workbook(obj_path)
-		wbt = xlsxwriter.Workbook("./obj/out.xlsx")
-		print("------------", len(headers))
-		for sheet_index, v in headers.items():
-			sheet_name = v.get("sheet_name")
-			data = v.get("data")
+		wbt = xlsxwriter.Workbook(obj_path)
+		for sheet_index, sheet_name, row_index, col_index, col_indexs in region_infos:
+			headers = self.get_headers(sheet_name, row_index)
+			context = self.get_data_after_filter(sheet_name, obj_path)
 			write_sheet = wbt.add_worksheet(sheet_name)
-			row_i = 0
-			for row in data:
-				for col in row:
-					col_i = col.get(CParseExcel.COL_INDEX)
-					col_v = col.get(CParseExcel.VALUE)
-					write_sheet.write(row_i, col_i, col_v)
-				row_i += 1
-		# for sheet_index, del_indexs in del_infos.items():
-		# 	sheet = wb.sheet_by_index(sheet_index)
-		# 	sheet_names = wb.sheet_names()
-		# 	sheet_name = sheet_names[sheet_index]
-		# 	row_len = sheet.nrows
-		# 	col_len = sheet.ncols
-		# 	write_sheet = wbt.add_worksheet(sheet_name)
-		# 	for row in range(row_len):
-		# 		if row in del_indexs:
-		# 			pass
-		# 		else:
-		# 			for col in range(col_len):
-		# 				value = sheet.cell(row, col).value
-		# 				write_sheet.write(row, col, value)
+			self.__write(write_sheet, headers)
+			self.__write(write_sheet, context, len(headers) - 1)
 		wbt.close()
-
-
-class CGetHeaderInfos(CReadInfo):
-	def __init__(self, file_path, region_infos):
-		CReadInfo.__init__(self, file_path)
-		self.m_region_infos = region_infos
-		self.m_header_infos = {}
-
-	def col_values(self, sheet_index, sheet_name, row_index, col_indexs):
-		if len(self.m_region_infos) - 1 < sheet_index:
-			return
-		region_info = self.m_region_infos[sheet_index]
-		if row_index < region_info[2]:
-			info = self.m_header_infos.get(sheet_index)
-			if info is not None:
-				# exist
-				info["data"].append(col_indexs)
-			else:
-				# not exist
-				info = {}
-				info["sheet_name"] = sheet_name
-				li = []
-				li.append(col_indexs)
-				info["data"] = li
-			self.m_header_infos[sheet_index] = info
-
-	def get_header_infos(self):
-		return self.m_header_infos
-
-
-class CDeleteRegions(CReadInfo):
-	def __init__(self, file_path, region_infos):
-		CReadInfo.__init__(self, file_path)
-		self.m_region_infos = region_infos
-		self.m_delete_indexs = {}
-
-	def __find_region_info(self, sheet_index):
-		for info in self.m_region_infos:
-			if info[0] == sheet_index:
-				return info
-
-	def col_values(self, sheet_index, row_index, col_values):
-		region_info = self.__find_region_info(sheet_index)
-		reg_row_next = region_info[1] + 1
-		reg_col_index = region_info[2]
-		li = self.m_delete_indexs.get(sheet_index)
-		if li is None:
-			li = []
-		if row_index > reg_row_next:
-			if col_values[reg_col_index].get(CParseExcel.VALUE) not in ["上海客户一部", "上海客户二部", "上海客户三部", "南京客户一部", "南京客户二部", "南京客户三部", "山东客户一部", "山东客户二部", "商务定制部", "苏州客户部", "苏北客户部", "青岛办事处"]:
-				li.append(row_index)
-		self.m_delete_indexs[sheet_index] = li
-
-	def delete(self, obj_path):
-		self.delete_multi_row(self.m_delete_indexs, obj_path)
 
 
 if __name__ == "__main__":
 	reader = CFindRegionFieldByTitle("./file/test1.xlsx")
 	reader.read()
 	reader.gen("./obj/test1.xlsx")
-	# reader = CDeleteRegions("./file/test1.xlsx", reader.get_region_infos())
-	# reader.read()
-	# reader.delete("./obj/test1.xlsx")
-	# print(reader.get_row_datas())
