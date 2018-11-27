@@ -103,13 +103,13 @@ class CFindRegionFieldByTitle(CReadInfo):
 		reader.read(callback)
 		return info
 
-	def __write(self, write_sheet, datas, row_offset=0, row_height=25):
+	def __write(self, write_sheet, datas, row_offset=0, row_height=25, form=None):
 		for row, col_values in datas.items():
 			for col_value in col_values:
 				col = col_value.get(CParseExcel.COL_INDEX)
 				value = col_value.get(CParseExcel.VALUE)
-				write_sheet.write(row + row_offset, col, value)
-				write_sheet.set_row(row + row_offset, row_height)
+				write_sheet.write(row + row_offset, col, value, form)
+				write_sheet.set_row(row + row_offset, row_height, form)
 				write_sheet.set_tab_color("green")
 
 	def gen(self, obj_path):
@@ -131,8 +131,24 @@ class CFindRegionFieldByTitle(CReadInfo):
 			headers = self.get_headers(sheet_name, row_index)
 			context = self.get_data_after_filter(sheet_name, obj_path)
 			write_sheet = wbt.add_worksheet(sheet_name)
-			self.__write(write_sheet, headers)
-			self.__write(write_sheet, context, len(headers) - 1)
+			header_bold = wbt.add_format({
+				'bold': 1,
+				# 'fg_color': "#FF0",
+				# 'align': 'center',
+				# 'valign': 'vcenter',
+				# 'text_wrap': 1,
+				# "left": 2,
+				# "right": 2,
+				# "top": 2,
+				# "bottom": 2,
+				})
+			context_bold = wbt.add_format({
+				# 'align': 'center',
+				# 'valign': 'vcenter',
+				# 'text_wrap': 1,
+				})
+			self.__write(write_sheet, headers, form=header_bold)
+			self.__write(write_sheet, context, len(headers) - 1, form=context_bold)
 		wbt.close()
 
 
